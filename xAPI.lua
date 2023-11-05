@@ -1,9 +1,26 @@
+-- xAPI		- A Powerful Exploit Simulator
+-- Version	- build::224491796
+-- Author	- Eskue (@SQLanguage)
+
 -- Locals
 local xAPI = {}
 local instances = {}
 local _nil = {}
 local _g = {}
 local metatables = {}
+local windowactive = true
+local uis = game:GetService("UserInputService")
+local gc = {}
+
+local fps = 120
+local clock = tick()
+task.spawn(function()
+	while true do
+		while clock + 1/fps > tick() do end
+		task.wait()
+		clock = tick()
+	end
+end)
 
 local function descendanthandler(descendant:Instance)
 	if not table.find(instances, descendant) then
@@ -23,12 +40,33 @@ local function descendanthandler(descendant:Instance)
 	end
 end
 
+local function log(content, header)
+	local a = header
+	for i=0, 20 do
+		a ..= "-"
+	end
+	local b = "-"
+	for i=0, 20+#header-1 do
+		b ..= "-"
+	end
+	
+	print("\n"..a.."\n"..content.."\n"..b)
+end
+
 -- Connections
 game.DescendantAdded:Connect(descendanthandler)
 
 for _, descendant in pairs(game:GetDescendants()) do
 	descendanthandler(descendant)
 end
+
+uis.WindowFocused:Connect(function()
+	windowactive = true
+end)
+
+uis.WindowFocusReleased:Connect(function()
+	windowactive = false
+end)
 
 -- Main
 local function add(aliases:any, value:any, places:any?)
@@ -45,51 +83,43 @@ local function add(aliases:any, value:any, places:any?)
 	end
 end
 
-add({"gethui"}, function(self)
+add({"gethui"}, function(self):Instance
 	return game:GetService("Players").LocalPlayer.PlayerGui
 end)
 
-add({"getinstances"}, function(self)
+add({"getinstances"}, function(self):{any}
 	return instances
 end)
 
-add({"getnilinstances"}, function(self)
+add({"getnilinstances"}, function(self):{any}
 	local r = {}
 
-	for _, descendant in pairs(instances) do
-		pcall(function()
-			if descendant.Parent == nil then
-				table.insert(r, descendant)
-			end
-		end)
+	for _, descendant in pairs(_nil) do
+		table.insert(r, descendant)
 	end
 
 	return r
 end)
 
-add({"getscripts"}, function(self)
+add({"getscripts"}, function(self):{any}
 	local r = {}
 
 	for _, descendant in pairs(instances) do
-		pcall(function()
-			if descendant:IsA("Script") then
-				table.insert(r, descendant)
-			end
-		end)
+		if descendant:IsA("BaseScript") then
+			table.insert(r, descendant)
+		end
 	end
 
 	return r
 end)
 
-add({"getmodules"}, function(self)
+add({"getmodules"}, function(self):{any}
 	local r = {}
 
 	for _, descendant in pairs(instances) do
-		pcall(function()
-			if descendant:IsA("ModuleScript") then
-				table.insert(r, descendant)
-			end
-		end)
+		if descendant:IsA("ModuleScript") then
+			table.insert(r, descendant)
+		end
 	end
 
 	return r
@@ -135,17 +165,17 @@ add({"islclosure"}, function(self, closure)
 	return is_l_lclosure
 end)
 
-add({"getcurrentline"}, function(self)
+add({"getcurrentline"}, function(self):number
 	return debug.info(3, "l")
 end)
 
-add({"getthreadidentity", "getidentity", "getthreadcontext"}, function(self)
+add({"getthreadidentity", "getidentity", "getthreadcontext"}, function(self):number
 	local identity = nil
 	local messageout = game:GetService("LogService").MessageOut:Connect(function(msg, msgtype)
 		if msgtype == Enum.MessageType.MessageOutput then
 			for level in msg:gmatch("Current identity is (.+)") do
 				if identity == nil and tonumber(level) ~= nil then
-					--identity = tonumber(level)
+					identity = tonumber(level)
 				end
 			end
 		end
@@ -164,30 +194,37 @@ add({"getthreadidentity", "getidentity", "getthreadcontext"}, function(self)
 	return identity or 2
 end)
 
-add({"getthread"}, function(self)
+add({"getthread"}, function(self):thread
 	return coroutine.running()
 end)
 
-add({"getmemoryaddress"}, function(self, obj:any, keep_0x:boolean | nil)
+add({"getmemoryaddress"}, function(self, obj:any, keep_0x:boolean | nil):string
 	assert(obj, "missing argument #1 to 'getmemoryaddress'")
 	assert(type(keep_0x) == "boolean" or keep_0x == nil, string.format("invalid argument #1 to 'getmemoryaddress' (boolean or nil expected, got %s)", type(keep_0x)))
-
-	local str = tostring(obj)
-	local strmatch = str:gmatch("(.+): 0x(.+)$")
-	local address
-	for _type, _addr in strmatch do
-		address = _addr
-	end
-	if keep_0x == true then
-		address = "0x"..address
-	end
-	if not address then
+	
+	local s,r = pcall(function()
+		local str = tostring(obj)
+		local strmatch = str:gmatch("(.+): 0x(.+)$")
+		local address
+		for _type, _addr in strmatch do
+			address = _addr
+		end
+		if keep_0x == true then
+			address = "0x"..address
+		end
+		if not address then
+			assert(nil, string.format("invalid argument #1 to 'getmemoryaddress' (%s is not supported)", typeof(obj)))
+		end
+		return address
+	end)
+	if s then
+		return r
+	else
 		assert(nil, string.format("invalid argument #1 to 'getmemoryaddress' (%s is not supported)", typeof(obj)))
 	end
-	return address
 end)
 
-add({"getgenv"}, function(self)
+add({"getgenv"}, function(self):{any}
 	return setmetatable(xAPI, {__newindex = function(self, key, value)
 		getfenv(2)[key] = value
 	end,__index = function(self, key)
@@ -195,14 +232,14 @@ add({"getgenv"}, function(self)
 	end,})
 end)
 
-add({"getrenv"}, function(self)
+add({"getrenv"}, function(self):{any}
 	return getfenv(1)
 end)
 
-add({"identifyexecutor", "getexecutorname"}, function(self)
+add({"identifyexecutor", "getexecutorname"}, function(self):(string, string)
 	local Build = 0
 	local _count = 0
-	for name, value in pairs(xAPI) do
+	for name, value in pairs(getfenv(3)) do
 		for _, char in pairs(name:split("")) do
 			Build += string.byte(char)*#name
 			_count += 1
@@ -212,7 +249,7 @@ add({"identifyexecutor", "getexecutorname"}, function(self)
 	return "xAPI", "build::"..Build
 end)
 
-add({"isexecutorclosure", "checkclosure", "isourclosure"}, function(self, closure)
+add({"isexecutorclosure", "checkclosure", "isourclosure"}, function(self, closure):boolean
 	assert(closure, string.format("missing argument #1 to '%s'", self))
 	assert(type(closure) == "function", string.format("invalid argument #1 to '%s' (%s is not supported)", self, type(closure)))
 
@@ -225,7 +262,7 @@ end)
 
 add({"_G", "shared"}, _g)
 
-add({"newproxy"}, function(self, addMetatable:boolean)
+add({"newproxy"}, function(self, addMetatable:boolean):userdata
 	assert(type(addMetatable) == "boolean" or addMetatable == nil, string.format("invalid argument #1 to 'newproxy' (nil or boolean expected, got %s)", type(addMetatable)))
 	local userdata = newproxy(addMetatable)
 	if addMetatable == true then
@@ -239,7 +276,7 @@ add({"newproxy"}, function(self, addMetatable:boolean)
 	return userdata
 end)
 
-add({"setmetatable"}, function(self, object, meta)
+add({"setmetatable"}, function(self, object, meta):{any}
 	assert(object, "missing argument #1 to 'setmetatable' (table expected)")
 	assert(type(object) == "table", string.format("invalid argument #1 to 'setmetatable' (expected table, got %s)", type(object)))
 
@@ -247,14 +284,14 @@ add({"setmetatable"}, function(self, object, meta)
 	return metatables[object][2]
 end)
 
-add({"getmetatable"}, function(self, object)
+add({"getmetatable"}, function(self, object):{any}
 	assert(object, "missing argument #1 to 'getmetatable' (expected table or userdata)")
 	assert(type(object) == "userdata" or type(object) == "table", string.format("invalid argument #1 to 'getmetatable' (expected table or userdata, got %s)", type(object)))
 
 	return getmetatable(metatables[object][2])
 end)
 
-add({"getrawmetatable"}, function(self, object)
+add({"getrawmetatable"}, function(self, object):{any}
 	assert(object, "missing argument #1 to 'getrawmetatable' (expected table or userdata)")
 	assert(type(object) == "userdata" or type(object) == "table", string.format("invalid argument #1 to 'getrawmetatable' (expected table or userdata, got %s)", type(object)))
 	
@@ -262,15 +299,51 @@ add({"getrawmetatable"}, function(self, object)
 	local raw = metatables[object][1]
 	local prev_mt = metatables[object][2]
 	
-	local proxy = setmetatable({}, {}) -- TODO: __newindex to real metatable
+	local loading = true
+	local proxy = setmetatable({}, {__newindex = function(self, key, value)
+		rawset(self, key, value)
+		if not loading then
+			pcall(function()
+				xAPI.setmetatable(object, self)
+			end)
+		end
+	end
+	})
 	for i,v in pairs(raw) do
 		proxy[i] = v
 	end
+	loading = false
 	return proxy
 end)
 
-add({"isluau"}, function(self)
+add({"isluau"}, function(self):boolean
 	return _VERSION == "Luau"
+end)
+
+add({"dumpstring"}, function(self, _string:string):string
+	assert(_string, "missing argument #1 to 'dumpstring' (expected string)")
+	assert(type(_string) == "userdata" or type(_string) == "table", string.format("invalid argument #1 to 'dumpstring' (expected string, got %s)", type(_string)))
+
+	local r = ""
+	
+	for _, char in _string:split("") do
+		r ..= "\\"..char:byte()
+	end
+	
+	return r
+end)
+
+add({"isgameactive", "isrbxactive"}, function(self):boolean
+	return windowactive
+end)
+
+add({"setfpscap"}, function(self, newfpscap:number):nil
+	-- https://devforum.roblox.com/t/is-it-possible-to-cap-fps/602143/7
+	fps = newfpscap
+end)
+
+add({"setclipboard", "setrbxclipboard"}, function(self, content)
+	log(content, "xAPI [clipboard] ")
 end)
 
 return function()
@@ -281,8 +354,10 @@ return function()
 		_count += 1
 	end
 	
-	-- for some reason importing `hookfunction` using `add` does not work
-	env["hookfunction"] = function(old, new)
+	-- Since some functions require intimate data of the environment,
+	-- they may not work using `add` and are instead assigned here
+	
+	env["hookfunction"] = function(old, new):any
 		assert(old, "missing argument #1 to 'hookfunction' (function expected)")
 		assert(new, "missing argument #2 to 'hookfunction' (function expected)")
 		assert(type(old) == "function", string.format("invalid argument #1 to 'hookfunction' (function expected, got %s)", type(old)))
@@ -297,7 +372,23 @@ return function()
 		return old
 	end
 	
-	local _,build = xAPI.identifyexecutor()
+	-- catch garbage collection and/or nil assignment
+	local clone = {}
+	task.spawn(function()
+		while task.wait(.05) do
+			for name, value in pairs(env) do
+				clone[name] = value
+			end
+			for name, value in pairs(clone) do
+				if not env[name] then
+					gc[name] = value
+				end
+			end
+			env["getgc"] = function()
+				return gc
+			end
+		end
+	end)
 	
-	print(string.format("[%s] [xAPI] Loaded %d variables!", build, _count))
+	print(string.format("[build::224491796] [xAPI] Loaded %d variables!", _count))
 end
