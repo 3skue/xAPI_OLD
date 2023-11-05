@@ -8,7 +8,7 @@ xAPI is an open source tool to simulate Roblox exploit functions, such as `hookf
 
 ## Usage
 
-In order to use xAPI, put this code in a script:
+In order to use xAPI, put this code in the script:
 
 ```lua
 require(game.ReplicatedStorage.xAPI)()
