@@ -1,5 +1,5 @@
 -- xAPI		- A Powerful Exploit Simulator
--- Version	- build::224491796
+-- Version	- build::832452800
 -- Author	- Eskue (@SQLanguage)
 
 -- Locals
@@ -11,6 +11,12 @@ local metatables = {}
 local windowactive = true
 local uis = game:GetService("UserInputService")
 local gc = {}
+local sha2 = script:FindFirstChild("sha2")
+if sha2 then
+	sha2 = require(sha2)
+end
+local _workspace = Instance.new("Folder", script)
+local loadedmodules = {}
 
 local fps = 120
 local clock = tick()
@@ -53,6 +59,15 @@ local function log(content, header)
 	print("\n"..a.."\n"..content.."\n"..b)
 end
 
+local function replace_rconsoleFormatting(txt:string)
+	local a,_ = txt:gsub("@@(.+)@@", "")
+	return a
+end
+
+local rconsoleevent = Instance.new("BindableEvent")
+rconsoleevent.Name = "rconsole"
+rconsoleevent.Parent = script
+
 -- Connections
 game.DescendantAdded:Connect(descendanthandler)
 
@@ -70,8 +85,9 @@ end)
 
 -- Main
 local function add(aliases:any, value:any, places:any?)
+	places = places or {xAPI}
 	for _,alias in pairs(aliases) do
-		for _,place in pairs(places or { xAPI }) do
+		for _,place in pairs(places) do
 			if type(value) == "function" then
 				place[alias] = function(...)
 					return value(alias, ...)
@@ -322,7 +338,7 @@ end)
 
 add({"dumpstring"}, function(self, _string:string):string
 	assert(_string, "missing argument #1 to 'dumpstring' (expected string)")
-	assert(type(_string) == "userdata" or type(_string) == "table", string.format("invalid argument #1 to 'dumpstring' (expected string, got %s)", type(_string)))
+	assert(type(_string) == "string", string.format("invalid argument #1 to 'dumpstring' (expected string, got %s)", type(_string)))
 
 	local r = ""
 	
@@ -339,11 +355,242 @@ end)
 
 add({"setfpscap"}, function(self, newfpscap:number):nil
 	-- https://devforum.roblox.com/t/is-it-possible-to-cap-fps/602143/7
+	assert(newfpscap, "missing argument #1 to 'setfpscap' (function expected)")
+	assert(type(newfpscap) == "number", string.format("invalid argument #1 to 'setfpscap' (number expected, got %s)", type(newfpscap)))
+	
 	fps = newfpscap
 end)
 
-add({"setclipboard", "setrbxclipboard"}, function(self, content)
+add({"setclipboard", "setrbxclipboard", "toclipboard"}, function(self, content)
+	assert(content, string.format("missing argument #1 to '%s' (expected string)", self))
+	assert(type(content) == "string", string.format("invalid argument #1 to '%s' (expected string, got %s)", self, type(content)))
+
 	log(content, "xAPI [clipboard] ")
+end)
+
+--[[
+
+rConsole API:
+	rconsoleevent.Event (out)
+		code| description
+		
+		1	| normal output
+		2	| warning
+		3	| error
+		4	| clear console
+		5	| console input async
+				when this happens you can fire rconsoleevent
+				to send input to console
+		6	| set title
+		7	| create/show console
+		8	| destroy/hide console
+
+]]
+
+add({"rconsoleprint", "consoleprint"}, function(self, txt)
+	assert(txt, string.format("missing argument #1 to '%s' (expected string)", self))
+	assert(type(txt) == "string", string.format("invalid argument #1 to '%s' (expected string, got %s)", self, type(txt)))
+
+	rconsoleevent:Fire(1, replace_rconsoleFormatting(tostring(txt)))
+end)
+
+add({"rconsolewarn", "consolewarn"}, function(self, txt)
+	assert(txt, string.format("missing argument #1 to '%s' (expected string)", self))
+	assert(type(txt) == "string", string.format("invalid argument #1 to '%s' (expected string, got %s)", self, type(txt)))
+
+	rconsoleevent:Fire(2, replace_rconsoleFormatting(tostring(txt)))
+end)
+
+add({"rconsoleerr", "rconsoleerror", "consoleerr", "consoleerror"}, function(self, txt)
+	assert(txt, string.format("missing argument #1 to '%s' (expected string)", self))
+	assert(type(txt) == "string", string.format("invalid argument #1 to '%s' (expected string, got %s)", self, type(txt)))
+
+	rconsoleevent:Fire(3, replace_rconsoleFormatting(tostring(txt)))
+end)
+
+add({"rconsoleclear", "consoleclear"}, function(self)
+	rconsoleevent:Fire(4)
+end)
+
+add({"rconsoleinput", "consoleinput"}, function(self)
+	rconsoleevent:Fire(5)
+	local recievedinput = rconsoleevent.Event:Wait()
+	return recievedinput
+end)
+
+add({"rconsolesettitle", "consolesettitle", "rconsolename"}, function(self, txt)
+	assert(txt, string.format("missing argument #1 to '%s' (expected string)", self))
+	assert(type(txt) == "string", string.format("invalid argument #1 to '%s' (expected string, got %s)", self, type(txt)))
+
+	rconsoleevent:Fire(6, txt)
+end)
+
+add({"rconsolecreate", "consolecreate"}, function(self)
+	rconsoleevent:Fire(7)
+end)
+
+add({"rconsoledestroy", "consoledestroy"}, function(self)
+	rconsoleevent:Fire(8)
+end)
+
+xAPI.crypt = {}
+
+local b='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+add({"base64encode", "base64_encode"}, function(self, data)
+	return ((data:gsub('.', function(x) 
+		local r,b='',x:byte()
+		for i=8,1,-1 do r=r..(b%2^i-b%2^(i-1)>0 and '1' or '0') end
+		return r;
+	end)..'0000'):gsub('%d%d%d?%d?%d?%d?', function(x)
+		if (#x < 6) then return '' end
+		local c=0
+		for i=1,6 do c=c+(x:sub(i,i)=='1' and 2^(6-i) or 0) end
+		return b:sub(c+1,c+1)
+	end)..({ '', '==', '=' })[#data%3+1])
+end, {xAPI.crypt})
+
+add({"base64decode", "base64_decode"}, function(self, data)
+	data = string.gsub(data, '[^'..b..'=]', '')
+	return (data:gsub('.', function(x)
+		if (x == '=') then return '' end
+		local r,f='',(b:find(x)-1)
+		for i=6,1,-1 do r=r..(f%2^i-f%2^(i-1)>0 and '1' or '0') end
+		return r;
+	end):gsub('%d%d%d?%d?%d?%d?%d?%d?', function(x)
+		if (#x ~= 8) then return '' end
+		local c=0
+		for i=1,8 do c=c+(x:sub(i,i)=='1' and 2^(8-i) or 0) end
+		return string.char(c)
+	end))
+end, {xAPI.crypt})
+
+if sha2 then
+	add({"hash"}, function(self, data:string, algorithm:string)
+		return sha2[algorithm:gsub("-","_")](data)
+	end, {xAPI.crypt})
+
+	add({"generatebytes"}, function(self, len)
+		local random = ""
+		for i=1, len do
+			random ..= string.char(math.random(0,255))
+		end
+		return xAPI.crypt.base64encode(random)
+	end, {xAPI.crypt})
+end
+
+local function parsefile(NameOrPath)
+	if _workspace:FindFirstChild(NameOrPath) then
+		return _workspace:FindFirstChild(NameOrPath), "workspace"
+	elseif NameOrPath.ClassName then
+		if NameOrPath:IsA("StringValue") or NameOrPath:IsA("Folder") then
+			return NameOrPath, "instance"
+		end
+	else
+		return NameOrPath, "not found"
+	end
+end
+
+add({"writefile"}, function(self, name, data)
+	local file, fileinfo = parsefile(name)
+	if fileinfo == "not found" then
+		local _file=Instance.new("StringValue",_workspace)
+		_file.Name=name
+		_file.Value=data
+	else
+		if file:IsA("StringValue") then
+			file.Value=data
+		end
+	end
+end)
+
+add({"readfile"}, function(self, name)
+	local file, fileinfo = parsefile(name)
+	if fileinfo == "not found" then
+		error("File '"..name.."' not found")
+	else
+		if file:IsA("StringValue") then
+			return file.Value
+		end
+	end
+end)
+
+add({"appendfile"}, function(self, name, data)
+	local file, fileinfo = parsefile(name)
+	if file=="not found" then
+		error("File '"..name.."' not found")
+	else
+		if file:IsA("StringValue") then
+			xAPI.writefile(name, xAPI.readfile(name)..data)
+		end
+	end
+end)
+
+add({"listfiles"}, function(self, name)
+	local file, fileinfo = parsefile(name)
+	if fileinfo == "not found" then
+		error("Folder '"..name.."' not found")
+	else
+		if file:IsA("Folder") then
+			return file:GetChildren()
+		else
+			error(name.." is not a folder")
+		end
+	end
+end)
+
+add({"isfile"}, function(self, name)
+	local file, fileinfo = parsefile(name)
+	if fileinfo == "not found" then
+		return false
+	else
+		return file:IsA("StringValue")
+	end
+end)
+
+add({"isfolder"}, function(self, name)
+	local file, fileinfo = parsefile(name)
+	if fileinfo == "not found"then
+		return false
+	else
+		return file:IsA("Folder")
+	end
+end)
+
+add({"makefolder"}, function(self, name)
+	local file, fileinfo = parsefile(name)
+	if fileinfo == "not found"then
+		Instance.new("Folder",_workspace).Name = name
+	else
+		error(file.." already exists!")
+	end
+end)
+
+add({"delfolder"}, function(self, name)
+	local file, fileinfo = parsefile(name)
+	if fileinfo == "not found" then
+		error("Folder '"..name.."' not found")
+	else
+		file:Destroy()
+	end
+end)
+
+add({"delfile"}, function(self, name)
+	local file, fileinfo = parsefile(name)
+	if fileinfo == "not found"then
+		error("File '"..name.."' not found")
+	else
+		file:Destroy()
+	end
+end)
+
+add({"require"}, function(self, target)
+	local required = require(target)
+	loadedmodules[target] = required
+	return required
+end)
+
+add({"getloadedmodules"}, function(self)
+	return loadedmodules
 end)
 
 return function()
@@ -357,19 +604,29 @@ return function()
 	-- Since some functions require intimate data of the environment,
 	-- they may not work using `add` and are instead assigned here
 	
-	env["hookfunction"] = function(old, new):any
-		assert(old, "missing argument #1 to 'hookfunction' (function expected)")
-		assert(new, "missing argument #2 to 'hookfunction' (function expected)")
-		assert(type(old) == "function", string.format("invalid argument #1 to 'hookfunction' (function expected, got %s)", type(old)))
-		assert(type(new) == "function", string.format("invalid argument #2 to 'hookfunction' (function expected, got %s)", type(new)))
+	local function hook(old, new):any
+			assert(old, "missing argument #1 to 'hookfunction' (function expected)")
+			assert(new, "missing argument #2 to 'hookfunction' (function expected)")
+			assert(type(old) == "function", string.format("invalid argument #1 to 'hookfunction' (function expected, got %s)", type(old)))
+			assert(type(new) == "function", string.format("invalid argument #2 to 'hookfunction' (function expected, got %s)", type(new)))
 
-		local funcname = debug.info(old, "n")
+			local funcname = debug.info(old, "n")
 
-		assert(funcname ~= "", "invalid argument #1 to 'hookfunction' (function must not be unnamed)")
+			assert(funcname ~= "", "invalid argument #1 to 'hookfunction' (function must not be unnamed)")
 
-		getfenv(old)[funcname] = new
+			getfenv(old)[funcname] = new
 
-		return old
+			return old
+	end
+	env["hookfunction"], env["replaceclosure"] = hook, hook
+	
+	local coroutine_running = env.coroutine.running
+	env["checkcaller"] = function():boolean
+		return coroutine_running() == coroutine.running()
+	end
+	
+	env["getgc"] = function()
+		return gc
 	end
 	
 	-- catch garbage collection and/or nil assignment
@@ -390,5 +647,5 @@ return function()
 		end
 	end)
 	
-	print(string.format("[build::224491796] [xAPI] Loaded %d variables!", _count))
+	print(string.format("[build::832452800] [xAPI] Loaded %d variables!", _count))
 end
