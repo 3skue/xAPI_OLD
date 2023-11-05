@@ -13,36 +13,14 @@ In order to use xAPI, put this code in the script:
 ```lua
 require(game.ReplicatedStorage.xAPI)()
 ```
+That's pretty much it! The Globals will automatically load in.
 
-The functions will automatically load in, so there's no need to do
+## Notes
 
-```lua
-local xAPI = require(game.ReplicatedStorage.xAPI)
-xAPI...
-```
+<a href="https://web.archive.org/web/20230601132050/https://scriptunc.org" style="height:max-content;" target="_blank">
+    <img style="width: 120px;height:auto;" alt="UNC Supported Badge" src="https://web.archive.org/web/20230601132050/https://scriptunc.org/badge.png"/>
+</a>
 
-Example:
-
-```lua
-require(game.ReplicatedStorage.xAPI)()
-
-local mt = setmetatable({}, {
-    __metatable = "This metatable is locked"
-})
-
-print(getmetatable(mt))
--- This metatable is locked
-
-print(getrawmetatable(mt))
---[[
-    {
-        __metatable = "This metatable is locked"
-    }
-]]
-```
-
-## Documentation
-
-Coming soon!
+xAPI is compatible with UNC! Learn more [here](https://web.archive.org/web/20230601132048/https://scriptunc.org/)
 
 ###### Current build as of 5.11.2023 [11/5/2023]: build::832452800
