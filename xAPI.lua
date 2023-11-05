@@ -165,20 +165,14 @@ add({"iscclosure"}, function(self, closure)
 	assert(closure, "missing argument #1 to 'iscclosure' (function expected)")
 	assert(type(closure) == "function", string.format("invalid argument #1 to 'iscclosure' (function expected, got %s)", type(closure)))
 
-	local is_l_lclosure,_ = pcall(function()
-		setfenv(closure, getfenv(closure))
-	end)
-	return not is_l_lclosure
+	return debug.info(closure, "s") == "[C]"
 end)
 
 add({"islclosure"}, function(self, closure)
 	assert(closure, "missing argument #1 to 'islclosure' (function expected)")
 	assert(type(closure) == "function", string.format("invalid argument #1 to 'islclosure' (function expected, got %s)", type(closure)))
-
-	local is_l_lclosure,_ = pcall(function()
-		setfenv(closure, getfenv(closure))
-	end)
-	return is_l_lclosure
+	
+	return debug.info(closure, "s") ~= "[C]"
 end)
 
 add({"getcurrentline"}, function(self):number
@@ -186,28 +180,7 @@ add({"getcurrentline"}, function(self):number
 end)
 
 add({"getthreadidentity", "getidentity", "getthreadcontext"}, function(self):number
-	local identity = nil
-	local messageout = game:GetService("LogService").MessageOut:Connect(function(msg, msgtype)
-		if msgtype == Enum.MessageType.MessageOutput then
-			for level in msg:gmatch("Current identity is (.+)") do
-				if identity == nil and tonumber(level) ~= nil then
-					identity = tonumber(level)
-				end
-			end
-		end
-	end)
-	
-	printidentity()
-	
-	local limit = 0
-	while not identity and limit < 5 do
-		task.wait()
-		limit += 1
-	end
-
-	messageout:Disconnect()
-
-	return identity or 2
+	return 2
 end)
 
 add({"getthread"}, function(self):thread
