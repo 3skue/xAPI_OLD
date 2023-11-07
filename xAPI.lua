@@ -1,5 +1,5 @@
 -- xAPI		- A Powerful Exploit Simulator
--- Version	- build::832452800
+-- Version	- build::860766189
 -- Author	- Eskue (@SQLanguage)
 
 -- Locals
@@ -16,6 +16,8 @@ if sha2 then
 	sha2 = require(sha2)
 end
 local _workspace = Instance.new("Folder", script)
+_workspace.Name = "workspace"
+
 local loadedmodules = {}
 
 local fps = 120
@@ -46,19 +48,6 @@ local function descendanthandler(descendant:Instance)
 	end
 end
 
-local function log(content, header)
-	local a = header
-	for i=0, 20 do
-		a ..= "-"
-	end
-	local b = "-"
-	for i=0, 20+#header-1 do
-		b ..= "-"
-	end
-	
-	print("\n"..a.."\n"..content.."\n"..b)
-end
-
 local function replace_rconsoleFormatting(txt:string)
 	local a,_ = txt:gsub("@@(.+)@@", "")
 	return a
@@ -68,6 +57,10 @@ local rconsoleevent = Instance.new("BindableEvent")
 rconsoleevent.Name = "rconsole"
 rconsoleevent.Parent = script
 
+local clipboardevent = Instance.new("BindableEvent")
+clipboardevent.Name = "clipboard"
+clipboardevent.Parent = script
+
 -- Connections
 game.DescendantAdded:Connect(descendanthandler)
 
@@ -75,12 +68,14 @@ for _, descendant in pairs(game:GetDescendants()) do
 	descendanthandler(descendant)
 end
 
-uis.WindowFocused:Connect(function()
-	windowactive = true
-end)
+pcall(function()
+	uis.WindowFocused:Connect(function()
+		windowactive = true
+	end)
 
-uis.WindowFocusReleased:Connect(function()
-	windowactive = false
+	uis.WindowFocusReleased:Connect(function()
+		windowactive = false
+	end)
 end)
 
 -- Main
@@ -100,7 +95,8 @@ local function add(aliases:any, value:any, places:any?)
 end
 
 add({"gethui"}, function(self):Instance
-	return game:GetService("Players").LocalPlayer.PlayerGui
+	local CGUI = (game:GetService("Players").LocalPlayer and game:GetService("Players").LocalPlayer.PlayerGui)
+	return CGUI
 end)
 
 add({"getinstances"}, function(self):{any}
@@ -164,15 +160,32 @@ end)
 add({"iscclosure"}, function(self, closure)
 	assert(closure, "missing argument #1 to 'iscclosure' (function expected)")
 	assert(type(closure) == "function", string.format("invalid argument #1 to 'iscclosure' (function expected, got %s)", type(closure)))
-
+	
 	return debug.info(closure, "s") == "[C]"
 end)
 
 add({"islclosure"}, function(self, closure)
 	assert(closure, "missing argument #1 to 'islclosure' (function expected)")
 	assert(type(closure) == "function", string.format("invalid argument #1 to 'islclosure' (function expected, got %s)", type(closure)))
-	
+
 	return debug.info(closure, "s") ~= "[C]"
+end)
+
+add({"clonefunction"}, function(self, closure)
+	assert(closure, "missing argument #1 to 'clonefunction' (function expected)")
+	assert(type(closure) == "function", string.format("invalid argument #1 to 'clonefunction' (function expected, got %s)", type(closure)))
+	
+	if debug.info(closure, "s") ~= "[C]" then
+		return function(...)
+			closure(...)
+		end
+	else
+		return coroutine.wrap(function(...)
+			while true do
+				coroutine.yield(closure(...))
+			end
+		end)
+	end
 end)
 
 add({"getcurrentline"}, function(self):number
@@ -190,7 +203,7 @@ end)
 add({"getmemoryaddress"}, function(self, obj:any, keep_0x:boolean | nil):string
 	assert(obj, "missing argument #1 to 'getmemoryaddress'")
 	assert(type(keep_0x) == "boolean" or keep_0x == nil, string.format("invalid argument #1 to 'getmemoryaddress' (boolean or nil expected, got %s)", type(keep_0x)))
-	
+
 	local s,r = pcall(function()
 		local str = tostring(obj)
 		local strmatch = str:gmatch("(.+): 0x(.+)$")
@@ -283,11 +296,11 @@ end)
 add({"getrawmetatable"}, function(self, object):{any}
 	assert(object, "missing argument #1 to 'getrawmetatable' (expected table or userdata)")
 	assert(type(object) == "userdata" or type(object) == "table", string.format("invalid argument #1 to 'getrawmetatable' (expected table or userdata, got %s)", type(object)))
-	
+
 	local result
 	local raw = metatables[object][1]
 	local prev_mt = metatables[object][2]
-	
+
 	local loading = true
 	local proxy = setmetatable({}, {__newindex = function(self, key, value)
 		rawset(self, key, value)
@@ -314,11 +327,11 @@ add({"dumpstring"}, function(self, _string:string):string
 	assert(type(_string) == "string", string.format("invalid argument #1 to 'dumpstring' (expected string, got %s)", type(_string)))
 
 	local r = ""
-	
+
 	for _, char in _string:split("") do
 		r ..= "\\"..char:byte()
 	end
-	
+
 	return r
 end)
 
@@ -330,7 +343,7 @@ add({"setfpscap"}, function(self, newfpscap:number):nil
 	-- https://devforum.roblox.com/t/is-it-possible-to-cap-fps/602143/7
 	assert(newfpscap, "missing argument #1 to 'setfpscap' (function expected)")
 	assert(type(newfpscap) == "number", string.format("invalid argument #1 to 'setfpscap' (number expected, got %s)", type(newfpscap)))
-	
+
 	fps = newfpscap
 end)
 
@@ -338,7 +351,7 @@ add({"setclipboard", "setrbxclipboard", "toclipboard"}, function(self, content)
 	assert(content, string.format("missing argument #1 to '%s' (expected string)", self))
 	assert(type(content) == "string", string.format("invalid argument #1 to '%s' (expected string, got %s)", self, type(content)))
 
-	log(content, "xAPI [clipboard] ")
+	clipboardevent:Fire(content)
 end)
 
 --[[
@@ -573,39 +586,39 @@ return function()
 		env[name] = value
 		_count += 1
 	end
-	
+
 	-- Since some functions require intimate data of the environment,
 	-- they may not work using `add` and are instead assigned here
-	
+
 	local function hook(old, new):any
-			assert(old, "missing argument #1 to 'hookfunction' (function expected)")
-			assert(new, "missing argument #2 to 'hookfunction' (function expected)")
-			assert(type(old) == "function", string.format("invalid argument #1 to 'hookfunction' (function expected, got %s)", type(old)))
-			assert(type(new) == "function", string.format("invalid argument #2 to 'hookfunction' (function expected, got %s)", type(new)))
+		assert(old, "missing argument #1 to 'hookfunction' (function expected)")
+		assert(new, "missing argument #2 to 'hookfunction' (function expected)")
+		assert(type(old) == "function", string.format("invalid argument #1 to 'hookfunction' (function expected, got %s)", type(old)))
+		assert(type(new) == "function", string.format("invalid argument #2 to 'hookfunction' (function expected, got %s)", type(new)))
 
-			local funcname = debug.info(old, "n")
+		local funcname = debug.info(old, "n")
 
-			assert(funcname ~= "", "invalid argument #1 to 'hookfunction' (function must not be unnamed)")
+		assert(funcname ~= "", "invalid argument #1 to 'hookfunction' (function must not be unnamed)")
 
-			getfenv(old)[funcname] = new
+		getfenv(old)[funcname] = new
 
-			return old
+		return old
 	end
 	env["hookfunction"], env["replaceclosure"] = hook, hook
-	
-	local coroutine_running = env.coroutine.running
-	env["checkcaller"] = function():boolean
-		return coroutine_running() == coroutine.running()
-	end
-	
+
 	env["getgc"] = function()
 		return gc
 	end
 	
+	local env_thread = env.coroutine.running()
+	env["checkcaller"] = function()
+		return env.coroutine.running() == env_thread
+	end
+
 	-- catch garbage collection and/or nil assignment
 	local clone = {}
 	task.spawn(function()
-		while task.wait(.05) do
+		while task.wait() do
 			for name, value in pairs(env) do
 				clone[name] = value
 			end
@@ -619,6 +632,6 @@ return function()
 			end
 		end
 	end)
-	
-	print(string.format("[build::832452800] [xAPI] Loaded %d variables!", _count))
+
+	print(string.format("[build::860766189] [xAPI] Loaded %d variables!", _count))
 end
