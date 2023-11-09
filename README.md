@@ -23,3 +23,5 @@ The Globals will automatically load in, and you're finished!
 [Devforum Post](https://devforum.roblox.com/t/xapi-a-powerful-executor-simulator/2688148)
 
 [Roblox Module](https://create.roblox.com/marketplace/asset/15278579028/xAPI-Source)
+
+[Documentation](https://github.com/3skue/xAPI/blob/main/Documentation.md)
