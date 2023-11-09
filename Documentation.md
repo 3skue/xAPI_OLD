@@ -90,7 +90,7 @@
 
 - `getgenv() -> table`
 
-- - [>] Returns the xAP[i] environment
+- - [>] Returns the xAPI environment
 
 - `getrenv() -> table`
 
