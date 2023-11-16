@@ -1,5 +1,5 @@
 -- xAPI		- A Powerful Exploit Simulator
--- Version	- build::860766189
+-- Version	- build::896581584
 -- Author	- Eskue (@SQLanguage)
 
 -- Locals
@@ -29,6 +29,8 @@ task.spawn(function()
 		clock = tick()
 	end
 end)
+
+local xAPI_replicated = game.ReplicatedStorage:FindFirstChild("xAPI")
 
 local function descendanthandler(descendant:Instance)
 	if not table.find(instances, descendant) then
@@ -137,23 +139,23 @@ add({"getmodules"}, function(self):{any}
 	return r
 end)
 
-add({"newcclosure"}, function(self, _func)
-	assert(_func, "missing argument #1 to 'newcclosure' (function expected)")
-	assert(type(_func) == "function", string.format("invalid argument #1 to 'newcclosure' (function expected, got %s)", type(_func)))
+add({"newcclosure"}, function(self, closure)
+	assert(closure, "missing argument #1 to 'newcclosure' (function expected)")
+	assert(type(closure) == "function", string.format("invalid argument #1 to 'newcclosure' (function expected, got %s)", type(closure)))
 
 	return coroutine.wrap(function(...)
 		while true do
-			coroutine.yield(_func(...))
+			coroutine.yield(closure(...))
 		end
 	end)
 end)
 
-add({"newlclosure"}, function(self, _func)
-	assert(_func, "missing argument #1 to 'newlclosure' (function expected)")
-	assert(type(_func) == "function", string.format("invalid argument #1 to 'newlclosure' (function expected, got %s)", type(_func)))
+add({"newlclosure"}, function(self, closure)
+	assert(closure, "missing argument #1 to 'newlclosure' (function expected)")
+	assert(type(closure) == "function", string.format("invalid argument #1 to 'newlclosure' (function expected, got %s)", type(closure)))
 
 	return function(...)
-		_func(...)
+		return closure(...)
 	end
 end)
 
@@ -177,7 +179,7 @@ add({"clonefunction"}, function(self, closure)
 	
 	if debug.info(closure, "s") ~= "[C]" then
 		return function(...)
-			closure(...)
+			return closure(...)
 		end
 	else
 		return coroutine.wrap(function(...)
@@ -197,7 +199,7 @@ add({"getthreadidentity", "getidentity", "getthreadcontext"}, function(self):num
 end)
 
 add({"getthread"}, function(self):thread
-	return coroutine.running()
+	return getfenv(3).coroutine.running()
 end)
 
 add({"getmemoryaddress"}, function(self, obj:any, keep_0x:boolean | nil):string
@@ -228,9 +230,9 @@ end)
 
 add({"getgenv"}, function(self):{any}
 	return setmetatable(xAPI, {__newindex = function(self, key, value)
-		getfenv(2)[key] = value
+		getfenv(3)[key] = value
 	end,__index = function(self, key)
-		return (self[key] or getfenv(2)[key])
+		return (self[key] or getfenv(3)[key])
 	end,})
 end)
 
@@ -297,7 +299,6 @@ add({"getrawmetatable"}, function(self, object):{any}
 	assert(object, "missing argument #1 to 'getrawmetatable' (expected table or userdata)")
 	assert(type(object) == "userdata" or type(object) == "table", string.format("invalid argument #1 to 'getrawmetatable' (expected table or userdata, got %s)", type(object)))
 
-	local result
 	local raw = metatables[object][1]
 	local prev_mt = metatables[object][2]
 
@@ -306,7 +307,7 @@ add({"getrawmetatable"}, function(self, object):{any}
 		rawset(self, key, value)
 		if not loading then
 			pcall(function()
-				xAPI.setmetatable(object, self)
+				xAPI.setrawmetatable("setrawmetatable", object, self)
 			end)
 		end
 	end
@@ -316,6 +317,51 @@ add({"getrawmetatable"}, function(self, object):{any}
 	end
 	loading = false
 	return proxy
+end)
+
+add({"setrawmetatable"}, function(self, object, meta):{any}
+	assert(object, "missing argument #1 to 'getrawmetatable' (expected table or userdata)")
+	assert(type(object) == "userdata" or type(object) == "table", string.format("invalid argument #1 to 'getrawmetatable' (expected table or userdata, got %s)", type(object)))
+	
+	local found = nil
+	
+	for i,v in pairs(getfenv(3)) do
+		if v == object then
+			found = {v,i}
+		end
+	end
+	
+	if not found then 
+		local s, mt_or_err = pcall(function()
+			setmetatable(object, meta)
+		end)
+
+		if not s then
+			local filtered = {}
+			for metamethod, value in pairs(meta) do
+				if metamethod == "__metatable" then continue end
+				filtered[metamethod] = value
+			end
+			return setmetatable(object, filtered)
+		end
+
+		return mt_or_err
+	else
+		-- https://www.lua.org/pil/13.4.4.html
+		local _t = found[1]
+
+		if type(found[1]) == "table" then
+			getfenv(3)[found[2]] = {}
+			return setmetatable(getfenv(3)[found[2]], meta)
+		else
+			getfenv(3)[found[2]] = newproxy()
+			local meta = getmetatable(getfenv(3)[found[2]])
+			for metamethod, value in pairs(meta) do
+				meta[metamethod] = value
+			end
+			return meta
+		end
+	end
 end)
 
 add({"isluau"}, function(self):boolean
@@ -353,25 +399,6 @@ add({"setclipboard", "setrbxclipboard", "toclipboard"}, function(self, content)
 
 	clipboardevent:Fire(content)
 end)
-
---[[
-
-rConsole API:
-	rconsoleevent.Event (out)
-		code| description
-		
-		1	| normal output
-		2	| warning
-		3	| error
-		4	| clear console
-		5	| console input async
-				when this happens you can fire rconsoleevent
-				to send input to console
-		6	| set title
-		7	| create/show console
-		8	| destroy/hide console
-
-]]
 
 add({"rconsoleprint", "consoleprint"}, function(self, txt)
 	assert(txt, string.format("missing argument #1 to '%s' (expected string)", self))
@@ -423,6 +450,9 @@ xAPI.crypt = {}
 
 local b='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 add({"base64encode", "base64_encode"}, function(self, data)
+	assert(data, string.format("missing argument #1 to '%s' (expected string)", self))
+	assert(type(data) == "string", string.format("invalid argument #1 to '%s' (expected string, got %s)", self, type(data)))
+	
 	return ((data:gsub('.', function(x) 
 		local r,b='',x:byte()
 		for i=8,1,-1 do r=r..(b%2^i-b%2^(i-1)>0 and '1' or '0') end
@@ -436,6 +466,9 @@ add({"base64encode", "base64_encode"}, function(self, data)
 end, {xAPI.crypt})
 
 add({"base64decode", "base64_decode"}, function(self, data)
+	assert(data, string.format("missing argument #1 to '%s' (expected string)", self))
+	assert(type(data) == "string", string.format("invalid argument #1 to '%s' (expected string, got %s)", self, type(data)))
+
 	data = string.gsub(data, '[^'..b..'=]', '')
 	return (data:gsub('.', function(x)
 		if (x == '=') then return '' end
@@ -633,5 +666,5 @@ return function()
 		end
 	end)
 
-	print(string.format("[build::860766189] [xAPI] Loaded %d variables!", _count))
+	print(string.format("[build::896581584] [xAPI] Loaded %d variables!", _count))
 end
