@@ -107,6 +107,10 @@
 - - [>] Returns the rawmetatable of `object` if available
 
 - - [!]  Will not get the real rawmetatable or the rawmetatable of predefined objects (like `game`, `getfenv`, etc.)
+ 
+- `setrawmetatable(object:<table or userdata>, meta:<table>)`
+
+- - [>] Sets the rawmetatable of `object` to `meta`
 
 - `isluau() -> boolean`
 
