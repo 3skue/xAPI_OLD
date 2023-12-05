@@ -320,8 +320,8 @@ add({"getrawmetatable"}, function(self, object):{any}
 end)
 
 add({"setrawmetatable"}, function(self, object, meta):{any}
-	assert(object, "missing argument #1 to 'getrawmetatable' (expected table or userdata)")
-	assert(type(object) == "userdata" or type(object) == "table", string.format("invalid argument #1 to 'getrawmetatable' (expected table or userdata, got %s)", type(object)))
+	assert(object, string.format("missing argument #1 to '%s' (expected table or userdata)", self))
+	assert(type(object) == "userdata" or type(object) == "table", string.format("invalid argument #1 to '%s' (expected table or userdata, got %s)", self, type(object)))
 	
 	local found = nil
 	
@@ -347,7 +347,6 @@ add({"setrawmetatable"}, function(self, object, meta):{any}
 
 		return mt_or_err
 	else
-		-- https://www.lua.org/pil/13.4.4.html
 		local _t = found[1]
 
 		if type(found[1]) == "table" then
